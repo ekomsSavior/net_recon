@@ -13,6 +13,8 @@
 
 NET_RECON is a comprehensive network reconnaissance tool designed for authorized security testing and network analysis. It provides automated network discovery, vulnerability assessment, and lateral movement analysis in a single, powerful package.
 
+**❤ FOR AUTHORIZED TESTING ONLY ❤**
+
 ### Features
 
 - **Network Discovery**: Automatically scan and map your network
@@ -136,8 +138,6 @@ Only use NET_RECON on:
 - Networks you have explicit written permission to test
 - Isolated lab environments for educational purposes
 
-**❤ FOR AUTHORIZED TESTING ONLY ❤**   
-**❤ HACK RESPONSIBLY ❤**
 ---
 
 *NET_RECON - Because knowing your network is the first step in securing it.* 
