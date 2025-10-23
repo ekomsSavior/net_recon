@@ -1,0 +1,3 @@
+import example
+class xox
+     def main_town_creator
