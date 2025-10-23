@@ -5,7 +5,7 @@
 **❤ ❤ ❤ NET-RECON ❤ ❤ ❤**  
 *by ek0ms & savi0r*
 
-![NET_RECON](https://img.shields.io/badge/NET_RECON-v1.0-red)
+![NET_RECON](https://img.shields.io/badge/NET_RECON-v2.0-red)
 ![Python](https://img.shields.io/badge/Python-3.6+-blue)
 ![Platform](https://img.shields.io/badge/Platform-Kali%20Linux-purple)
 
