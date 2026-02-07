@@ -66,7 +66,7 @@ except ImportError:
     try:
         import nmap
     except ImportError:
-        print("Warning: nmap module not available. Using demo data.")
+        print("Warning: nmap module not available.")
         nmap = None
 
 try:
@@ -137,47 +137,59 @@ class WiFiScanner:
     
     def scan_wifi_networks(self) -> List[AccessPoint]:
         """Scan for WiFi access points"""
+        access_points = []
         try:
             logging.info("Scanning for WiFi networks...")
             
-            # Create demo access points
-            demo_aps = [
-                AccessPoint(
-                    ssid="Home_Network",
-                    bssid="AA:BB:CC:DD:EE:FF",
-                    channel=6,
-                    encryption="WPA2",
-                    signal_strength=-65,
-                    is_open=False,
-                    clients=[]
-                ),
-                AccessPoint(
-                    ssid="Free_WiFi",
-                    bssid="11:22:33:44:55:66", 
-                    channel=11,
-                    encryption="Open",
-                    signal_strength=-72,
-                    is_open=True,
-                    clients=[]
-                ),
-                AccessPoint(
-                    ssid="AndroidAP",
-                    bssid="66:55:44:33:22:11",
-                    channel=1,
-                    encryption="WPA2",
-                    signal_strength=-58,
-                    is_open=False,
-                    clients=[]
-                )
-            ]
+            # Attempt real WiFi scanning
+            if scapy:
+                try:
+                    # Use scapy for real WiFi scanning
+                    from scapy.all import Dot11, Dot11Beacon, Dot11ProbeResp, RadioTap, sniff
+                    
+                    def packet_handler(pkt):
+                        if pkt.haslayer(Dot11Beacon) or pkt.haslayer(Dot11ProbeResp):
+                            if pkt.type == 0 and pkt.subtype in [8, 5, 4]:
+                                bssid = pkt.addr2
+                                ssid = pkt.info.decode('utf-8', errors='ignore') if pkt.info else "Hidden SSID"
+                                
+                                # Extract signal strength
+                                if pkt.haslayer(RadioTap):
+                                    signal = pkt[RadioTap].dbm_antsignal if hasattr(pkt[RadioTap], 'dbm_antsignal') else -100
+                                else:
+                                    signal = -100
+                                
+                                # Extract encryption type
+                                encryption = "Open"
+                                if pkt.haslayer(Dot11Beacon):
+                                    cap = pkt.sprintf("{Dot11Beacon:%Dot11Beacon.cap%}")
+                                    if "privacy" in cap:
+                                        encryption = "WPA/WPA2"
+                                
+                                ap = AccessPoint(
+                                    ssid=ssid,
+                                    bssid=bssid,
+                                    channel=int(pkt[Dot11Beacon].network_stats().get("channel", 1)),
+                                    encryption=encryption,
+                                    signal_strength=signal,
+                                    is_open=(encryption == "Open"),
+                                    clients=[]
+                                )
+                                access_points.append(ap)
+                    
+                    # Scan for 10 seconds
+                    sniff(iface=self.interface, prn=packet_handler, timeout=10)
+                    
+                except Exception as e:
+                    logging.error(f"Real WiFi scanning failed: {e}")
+                    return []  # Return empty list if real scan fails
             
-            self.access_points.extend(demo_aps)
-            logging.info(f"Found {len(self.access_points)} access points")
+            logging.info(f"Found {len(access_points)} access points")
+            return access_points
             
         except Exception as e:
             logging.error(f"WiFi scanning error: {e}")
-            
-        return self.access_points
+            return []  # Return empty list on error
 
 class PortScanner(ScannerModule):
     def __init__(self):
@@ -191,14 +203,15 @@ class PortScanner(ScannerModule):
     def scan(self, target: str) -> List[NetworkNode]:
         """Perform port scanning on target"""
         if not self.nm:
-            logging.error("Nmap not available, using demo data")
-            return self.get_demo_nodes()
+            logging.error("Nmap not available")
+            return []  # Return empty list
             
         try:
             logging.info(f"Scanning ports on {target}")
             
-            # Simple nmap scan
-            self.nm.scan(hosts=target, arguments='-T4 -F')
+            # Perform actual nmap scan
+            scan_args = '-T4 -F --open'
+            self.nm.scan(hosts=target, arguments=scan_args)
             
             nodes = []
             for host in self.nm.all_hosts():
@@ -226,43 +239,12 @@ class PortScanner(ScannerModule):
                     )
                     nodes.append(node)
             
-            if not nodes:
-                logging.info("No live hosts found, using demo data")
-                return self.get_demo_nodes()
-            
             logging.info(f"Port scan completed. Found {len(nodes)} nodes.")
             return nodes
             
         except Exception as e:
-            logging.error(f"Port scanning error: {e}, using demo data")
-            return self.get_demo_nodes()
-    
-    def get_demo_nodes(self):
-        """Return demo nodes when real scanning fails"""
-        demo_nodes = [
-            NetworkNode(
-                ip="192.168.1.100",
-                mac="00:11:22:33:44:55",
-                hostname="android-device",
-                os="Android",
-                open_ports=[80, 443, 22, 8080, 5060],
-                services={
-                    80: "http", 443: "https", 22: "ssh", 
-                    8080: "http-proxy", 5060: "sip"
-                },
-                vulnerabilities=[]
-            ),
-            NetworkNode(
-                ip="192.168.1.1",
-                mac="AA:BB:CC:DD:EE:FF", 
-                hostname="router.local",
-                os="Linux",
-                open_ports=[80, 443, 53],
-                services={80: "http", 443: "https", 53: "domain"},
-                vulnerabilities=[]
-            )
-        ]
-        return demo_nodes
+            logging.error(f"Port scanning error: {e}")
+            return []  # Return empty list on error
 
 class VulnerabilityScanner:
     def __init__(self):
@@ -443,7 +425,8 @@ class ReportGenerator:
             'scan_metadata': {
                 'target': self.target_name,
                 'timestamp': self.timestamp,
-                'scanner_version': ' ek0ms savi0r '
+                'scanner_version': 'ek0ms savi0r',
+                'real_data': True
             },
             'access_points': [
                 {
@@ -509,10 +492,17 @@ class ReportGenerator:
         print(f"TIME: {report['scan_metadata']['timestamp']}")
         print(f"REPORT: {filename}")
         
+        if summary['total_nodes'] == 0 and summary['total_access_points'] == 0:
+            print(f"\n⚠️  SCAN RESULTS:")
+            print(f"  • No active devices found on the network")
+            print(f"  • Ensure you're on the correct network and have proper permissions")
+            return
+        
         print(f"\nSCAN RESULTS:")
         print(f"  • Nodes: {summary['total_nodes']}")
         print(f"  • Access Points: {summary['total_access_points']}")
-        print(f"  • Open WiFi: {summary['open_access_points']}")
+        if summary['total_access_points'] > 0:
+            print(f"  • Open WiFi: {summary['open_access_points']}")
         
         print(f"\nVULNERABILITIES:")
         print(f"  • CRITICAL: {risk['CRITICAL']}")
@@ -550,21 +540,31 @@ class NetworkReconFramework:
         """Execute network reconnaissance"""
         logging.info("Starting network reconnaissance")
 
+        # WiFi scanning
         access_points = self.wifi_scanner.scan_wifi_networks()
         for ap in access_points:
             self.mapper.add_access_point(ap)
 
+        # Port scanning
         nodes = self.port_scanner.scan(target_range)
         for node in nodes:
             self.mapper.add_network_node(node)
 
+        # Vulnerability scanning
         for ip, node in self.mapper.network_nodes.items():
             node.vulnerabilities = self.vuln_scanner.scan_node(node)
 
-        topology = self.topology_mapper.trace_connections(list(self.mapper.network_nodes.values()))
+        # Only create topology if we have nodes
+        topology = {}
+        if self.mapper.network_nodes:
+            topology = self.topology_mapper.trace_connections(list(self.mapper.network_nodes.values()))
 
-        movement_paths = self.movement_analyzer.analyze_connectivity(topology, self.mapper.network_nodes)
-        exploitation_paths = self.movement_analyzer.suggest_exploitation_paths(movement_paths, self.mapper.network_nodes)
+        # Lateral movement analysis
+        movement_paths = []
+        exploitation_paths = []
+        if topology and self.mapper.network_nodes:
+            movement_paths = self.movement_analyzer.analyze_connectivity(topology, self.mapper.network_nodes)
+            exploitation_paths = self.movement_analyzer.suggest_exploitation_paths(movement_paths, self.mapper.network_nodes)
 
         report_file = self.report_generator.generate_report(self.mapper, topology, exploitation_paths)
         
@@ -612,6 +612,8 @@ def main():
     try:
         report_file = framework.run_scan(target_range)
         print(f"\nScan completed: {report_file}")
+    except KeyboardInterrupt:
+        print("\nScan interrupted by user")
     except Exception as e:
         print(f"Error: {e}")
 
